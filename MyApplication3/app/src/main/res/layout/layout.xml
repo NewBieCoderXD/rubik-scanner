@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/main_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="structure of a lot of case-switch without case-switch"
+        android:textAlignment="center"
+        android:textColor="#1E1C1C"
+        android:textSize="34sp" />
+
+    <Button
+        android:id="@+id/button1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:text="move to next stage"
+        android:textSize="24sp" />
+
+    <TextView
+        android:id="@+id/main_text2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="this should better for a lot of if, case-switch statement \nRef. https://stackoverflow.com/questions/160970/how-do-i-invoke-a-java-method-when-given-the-method-name-as-a-string"
+        android:textAlignment="center"
+        android:textColor="#1E1C1C"
+        android:textSize="34sp" />
+</LinearLayout>
