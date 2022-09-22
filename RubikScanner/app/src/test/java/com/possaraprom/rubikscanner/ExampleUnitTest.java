@@ -1,4 +1,4 @@
-package com.example.rubikscanner;
+package com.possaraprom.rubikscanner;
 
 import org.junit.Test;
 
