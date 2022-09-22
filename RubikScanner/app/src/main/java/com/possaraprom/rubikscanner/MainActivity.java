@@ -1,5 +1,5 @@
 package com.possaraprom.rubikscanner;
-a
+
 import static java.lang.Math.sqrt;
 
 import android.app.Activity;
