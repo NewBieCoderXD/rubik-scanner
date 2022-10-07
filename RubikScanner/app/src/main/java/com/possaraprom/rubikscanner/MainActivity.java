@@ -1,147 +1,114 @@
 package com.possaraprom.rubikscanner;
 
-import static java.lang.Math.sqrt;
+import static java.lang.Math.ceil;
 
-import android.app.Activity;
-import android.graphics.Color;
+import android.opengl.GLSurfaceView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
-import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.ContactsContract;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.graphics.Bitmap;
 import android.widget.ImageView;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 
 
 public class MainActivity extends AppCompatActivity {
     String currentPhotoPath;
-    Uri photoURI = null;
-    Button button = null;
-    Button button2 = null;
-    Context context = MainActivity.this;
-    int w;
-    int h;
+    Uri photoURI;
+    Button button;
+    Button button2;
+    View progressBar;
 
-    private File createImageFile() throws IOException{
-        // Create an image file name
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        String imageFileName = "JPEG_" + timeStamp + "_";
-        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-        File image = File.createTempFile(
-                imageFileName,  /* prefix */
-                ".jpg",         /* suffix */
-                storageDir      /* directory */
-        );
-
-        // Save a file: path for use with ACTION_VIEW intents
-        currentPhotoPath = image.getAbsolutePath();
-        return image;
-    }
-
-    private void pickImageFromGallery(String intent, Integer activityCode){
-        Intent takePictureIntent = new Intent();
-        takePictureIntent.setType("image/*");
-        takePictureIntent.setAction(Intent.ACTION_GET_CONTENT);
-        takePictureIntent = Intent.createChooser(takePictureIntent, "Select Picture");
-        startActivityForResult(takePictureIntent, activityCode);
-    }
-
-    private void dispatchTakePictureIntent(String intent, Integer activityCode) {
-        Intent takePictureIntent = new Intent(intent);
-        // Ensure that there's a camera activity to handle the intent
-        Log.v("PICTURE","Dispatch Ran");
-        //if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
-            // Create the File where the photo should go
-            File photoFile = null;
-            Log.v("PICTURE","Package's Available");
-            try {
-                photoFile = createImageFile();
-            } catch (IOException ex) {
-                Log.e("PICTURE","Error"+ex);
-            }
-            // Continue only if the File was successfully created
-            if (photoFile != null) {
-                photoURI = FileProvider.getUriForFile(this,
-                        BuildConfig.APPLICATION_ID + ".provider",
-                        photoFile);
-                Log.i("PICTURE",photoURI.toString());
-                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
-                startActivityForResult(takePictureIntent, activityCode);
-            }
-        //}
-    }
+    private ArrayList<PhotoCube> photoCubesList = new ArrayList<>();
+    private boolean readyToExit=false;
+    private Date backPressedTime;
+    private GLSurfaceView surfaceView;
+    private final byte[][][] orientations = new byte[6][4][3];
+    private final byte[][] rubik = new byte[6][8];
+    private final int[][] direction = new int[][]{
+            {1, 3, 4, 2},
+            {3, 0, 2, 5},
+            {1, 0, 4, 5},
+            {4, 0, 1, 5},
+            {2, 0, 3, 5},
+            {1, 2, 4, 3}
+    };
 
     @Override
-    protected void onCreate(Bundle savedInstanceState){
+    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        surfaceView = findViewById(R.id.surfaceView);
         button = findViewById(R.id.button);
         button2 = findViewById(R.id.button2);
+        progressBar = findViewById(R.id.progressBar);
+        surfaceView.setVisibility(View.INVISIBLE);
+
         button2.setOnClickListener((View v) -> {
-            Log.v("BUTTON","Button Triggered");
+            Log.v("BUTTON", "Button Triggered");
             pickImageFromGallery(Intent.ACTION_GET_CONTENT, 2);
-            View progressBar = findViewById(R.id.progressBar);
             progressBar.setVisibility(View.VISIBLE);
             button.setVisibility(View.INVISIBLE);
             button2.setVisibility(View.INVISIBLE);
         });
         button.setOnClickListener((View v) -> {
-            Log.v("BUTTON","Button Triggered");
-            dispatchTakePictureIntent(MediaStore.ACTION_IMAGE_CAPTURE,  1);
-            View progressBar = findViewById(R.id.progressBar);
+            Log.v("BUTTON", "Button Triggered");
+            dispatchTakePictureIntent(MediaStore.ACTION_IMAGE_CAPTURE);
             progressBar.setVisibility(View.VISIBLE);
             button.setVisibility(View.INVISIBLE);
             button2.setVisibility(View.INVISIBLE);
         });
     }
-
-    protected double colorDistance(String hex1, String hex2){
-        int dec1 = Color.parseColor(hex1);
-        int dec2 = Color.parseColor(hex2);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O){
-            float meanR = (Color.red(dec1) + Color.red(dec2))/2/255;
-            float dR = Color.red(dec1) - Color.red(dec2);
-            float dG = Color.green(dec1) - Color.green(dec2);
-            float dB = Color.blue(dec1) - Color.blue(dec2);
-            return sqrt((2 + meanR) * dR * dR + dG * dG + (3 - meanR) * dB * dB)/sqrt(255);
-        }
-        return 0;
-    }
-
-    protected Bitmap createLine(Bitmap bitmap, int x1, int y1, int x2, int y2){
-        if(x1==x2){
-            for(int j=y1;j<y2;j++){
-                bitmap.setPixel(x1,j,Color.GREEN);
+    @Override
+    public void onBackPressed(){
+        if(button.isShown()){
+            if(readyToExit&&(new Date()).getTime()-backPressedTime.getTime()<3000){
+                this.finishAffinity();
+                return;
             }
-            return bitmap;
+            backPressedTime = new Date();
+            Toast.makeText(this, "Press back again to exit", Toast.LENGTH_SHORT).show();
+            readyToExit = true;
+            return;
         }
-        for(int i=x1;i<x2;i++){
-            bitmap.setPixel(i,(i-x1)*(y2-y1)/(x2-x1)+y1,Color.GREEN);
-        }
-        return bitmap;
+        surfaceView.setVisibility(View.GONE);
+        progressBar.setVisibility(View.INVISIBLE);
+        button.setVisibility(View.VISIBLE);
+        button2.setVisibility(View.VISIBLE);
     }
 
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+
         try {
-            ImageView imgView = findViewById(R.id.img);
-            Bitmap bitmap = MediaStore.Images.Media.getBitmap(context.getContentResolver(),
-                    (photoURI!=null)?photoURI:data.getData());
-            int scale=1;
-            if(bitmap.getWidth()>10 || bitmap.getHeight()>10){
+            if(resultCode!=RESULT_OK){
+                onBackPressed();
+                return;
+            }
+
+            //ImageView imgView = findViewById(R.id.img);
+            Bitmap bitmap = MediaStore.Images.Media.getBitmap(MainActivity.this.getContentResolver(),
+                    (photoURI != null) ? photoURI : data.getData());
+            File photoFile = new File(photoURI.getPath());
+            //After fetching image processing
+            photoFile.delete();
+            /*if(bitmap.getWidth()>10 || bitmap.getHeight()>10){
                 scale=10;
             }
             int sumX = 0;
@@ -174,10 +141,175 @@ public class MainActivity extends AppCompatActivity {
             Log.i("average: ",sumX/numberOfPixels+" "+sumY/numberOfPixels);
             render = createLine(render,0,avgY,w,avgY);
             render = createLine(render,avgX,0,avgX,h);
-            float m;
+            float m;*/
+            {
+                int side = 3;
+                byte[][] orientaion = {
+                        {4, 4, 4},
+                        {0, 0, 0},
+                        {1, 1, 1},
+                        {5, 5, 5}
+                };
+                orientations[side] = orientaion;
+                side = 0;
+                orientaion = new byte[][]{
+                        {1, 1, 1},
+                        {3, 3, 3},
+                        {4, 4, 4},
+                        {2, 2, 2}
+                };
+                orientations[side] = orientaion;
+                side = 4;
+                orientaion = new byte[][]{
+                        {2, 2, 2},
+                        {0, 0, 0},
+                        {3, 3, 3},
+                        {5, 5, 5}
+                };
+                orientations[side] = orientaion;
+                side = 2;
+                orientaion = new byte[][]{
+                        {1, 1, 1},
+                        {0, 0, 0},
+                        {4, 4, 4},
+                        {5, 5, 5}
+                };
+                orientations[side] = orientaion;
+                side = 5;
+                orientaion = new byte[][]{
+                        {1, 1, 1},
+                        {2, 2, 2},
+                        {4, 4, 4},
+                        {3, 3, 3}
+                };
+                orientations[side] = orientaion;
+                side = 1;
+                orientaion = new byte[][]{
+                        {3, 3, 3},
+                        {0, 0, 0},
+                        {2, 2, 2},
+                        {5, 5, 5}
+                };
+                orientations[side] = orientaion;
+            }
+            int[] sides = new int[]{0, 1, 2, 3, 4, 5};
+            for (int side : sides) {
+                for (int i = 0; i < 4; i++) {
+                    for (int j = 0; j < 2; j++) {
+                        int n = findIndex(direction[direction[side][i]], side);
+                        rubik[side][2 * i + j] = orientations[direction[side][i]][n][j];
+                    }
+                }
+                Log.i(side+"", Arrays.toString(rubik[side]));
+            }
+            draw(0);
+
+            /*PhotoCube mPhotoCube = new PhotoCube(
+                    0.5f,
+                    0.5f,
+                    0.7f,
+                    -1,
+                    1,
+                    1
+            );
+            MyGLRenderer.add(mPhotoCube);*/
+            surfaceView.setVisibility(View.VISIBLE);
+        } catch (IOException e) {
+            Log.e("bitmap", "error" + e);
         }
-        catch (NullPointerException|IOException e){
-            Log.e("bitmap","error"+e);
+    }
+
+    private void draw(int side){
+        float axisWidth = 0.9f;
+        int[][] lists={
+                {0,1,0}, //Y
+                {1,0,0}, //X
+                {0,0,1}, //Z
+                {0,-1,0}, //-Y
+                {-1,0,0}, //-X
+                {0,0,-1} //-Z
+        };
+
+        //for(int i=0;i<4;i++) {
+            int i=0;
+            int currentSide=direction[side][i];
+            int n = findIndex(direction[currentSide], side);
+            for (int j = 0; j < 2; j++) {
+                Log.i("GGrubik",rubik[(currentSide-1)%4][(2*n)%8]+"");
+                Log.i("GG",(2*n+1+j)%8+"");
+                Log.i("GGGG",""+rubik[currentSide][(2*(n+1) - j)%8]);
+                Log.i("GGw",""+(rubik[currentSide][(2*(n+1) - j)%8]*lists[side][0]+((rubik[(currentSide-1)%4][(2*n)%8]-axisWidth)*j+axisWidth)*lists[(side-1+4)%4][0]));
+                Log.i("GGh",""+(rubik[currentSide][(2*(n+1) - j)%8]*lists[side][1]+((rubik[(currentSide-1)%4][(2*n)%8]-axisWidth)*j+axisWidth)*lists[(side-1+4)%4][1]));
+                PhotoCube mPhotoCube = new PhotoCube(
+                        (rubik[currentSide][(2*(n+1) - j)%8]*lists[side][0]+((rubik[(currentSide-1)%4][(2*n)%8]-axisWidth)*j+axisWidth)*lists[(side-1+4)%4][0])*0.3f+axisWidth,
+                        (rubik[currentSide][(2*(n+1) - j)%8]*lists[side][1]+((rubik[(currentSide-1)%4][(2*n)%8]-axisWidth)*j+axisWidth)*lists[(side-1+4)%4][1])*0.3f+axisWidth,
+                        (rubik[currentSide][(2*(n+1) - j)%8]*lists[side][2]+((rubik[(currentSide-1)%4][(2*n)%8]-axisWidth)*j+axisWidth)*lists[(side-1+4)%4][2])*0.3f+axisWidth,
+                        (float) ((1-j)+lists[side][0]-(1-j)*Math.pow(lists[side][0],2)), //0-> 1-j 1->1 -1->-1
+                        (float) ((1-j)+lists[side][1]-(1-j)*Math.pow(lists[side][1],2)),
+                        (float) ((1-j)+lists[side][2]-(1-j)*Math.pow(lists[side][2],2))
+                );
+                MyGLRenderer.add(mPhotoCube);
+            }
+        //}
+        //surfaceView.requestRender();
+    }
+
+    private int findIndex(int[] list, int value) {
+        for (int i = 0; i < list.length; i++) {
+            if (list[i] == value) {
+                return i;
+            }
         }
+        return 5;
+    }
+
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        File image = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+
+        // Save a file: path for use with ACTION_VIEW intents
+        currentPhotoPath = image.getAbsolutePath();
+        return image;
+    }
+
+    private void pickImageFromGallery(String intent, Integer activityCode) {
+        Intent takePictureIntent = new Intent();
+        takePictureIntent.setType("image/*");
+        takePictureIntent.setAction(intent);
+        takePictureIntent = Intent.createChooser(takePictureIntent, "Select Picture");
+        startActivityForResult(takePictureIntent, activityCode);
+    }
+
+    private void dispatchTakePictureIntent(String intent) {
+        Intent takePictureIntent = new Intent(intent);
+        // Ensure that there's a camera activity to handle the intent
+        Log.v("PICTURE", "Dispatch Ran");
+
+        //if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+        //Log.v("PICTURE Package", "Package's Available");
+        File photoFile = null;
+        // Create the File where the photo should go
+        try {
+            photoFile = createImageFile();
+        } catch (IOException ex) {
+            Log.e("PICTURE Error", "Error" + ex);
+        }
+        // Continue only if the File was successfully created
+        if (photoFile != null) {
+            photoURI = FileProvider.getUriForFile(this,
+                    BuildConfig.APPLICATION_ID + ".provider",
+                    photoFile);
+            Log.i("PICTURE URI", photoURI.toString());
+            takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
+            startActivityForResult(takePictureIntent, 1); //activity code = 1
+        }
+        //}
     }
 }
